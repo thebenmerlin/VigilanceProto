@@ -1,903 +1,1296 @@
-// Vigilance Command - Threat Detection System
-// Palantir Gotham-style Dashboard Implementation
-
 class VigilanceCommand {
     constructor() {
-        this.events = [];
-        this.sensors = [];
-        this.map = null;
-        this.markers = [];
-        this.isConnected = true;
-        this.eventCounts = {
-            benign: 0,
-            suspicious: 0,
-            critical: 0
+        // Initialize system data
+        this.threats = [];
+        this.sensors = [
+            {"id": "drone_01", "name": "DRONE_01", "type": "drone", "status": "active", "location": [34.0522, -118.2437], "batteryLevel": 85, "signalStrength": 95, "lastPing": Date.now()},
+            {"id": "drone_23", "name": "DRONE_23", "type": "drone", "status": "active", "location": [34.1021, -118.1234], "batteryLevel": 72, "signalStrength": 88, "lastPing": Date.now()},
+            {"id": "radar_07", "name": "RADAR_07", "type": "radar", "status": "active", "location": [34.0892, -118.3012], "batteryLevel": 100, "signalStrength": 92, "lastPing": Date.now()},
+            {"id": "radar_12", "name": "RADAR_12", "type": "radar", "status": "warning", "location": [34.1156, -118.2789], "batteryLevel": 45, "signalStrength": 67, "lastPing": Date.now()},
+            {"id": "sensor_45", "name": "SENSOR_45", "type": "motion", "status": "active", "location": [34.0745, -118.2456], "batteryLevel": 90, "signalStrength": 85, "lastPing": Date.now()},
+            {"id": "cam_18", "name": "CAM_18", "type": "camera", "status": "critical", "location": [34.0967, -118.2123], "batteryLevel": 15, "signalStrength": 23, "lastPing": Date.now()}
+        ];
+        
+        this.threatTypes = [
+            "Unauthorized Vehicle",
+            "Perimeter Breach", 
+            "Suspicious Activity",
+            "Unknown Aircraft",
+            "Cyber Intrusion",
+            "Equipment Malfunction",
+            "False Positive",
+            "Personnel Alert"
+        ];
+        
+        this.severityLevels = ["benign", "suspicious", "critical"];
+        this.locationBounds = {
+            north: 34.15,
+            south: 34.00,
+            east: -118.10,
+            west: -118.35
         };
         
+        // System state
+        this.isGeneratingThreats = true;
+        this.selectedThreat = null;
+        this.threatIdCounter = 1;
+        this.threatMarkers = new Map();
+        this.sensorMarkers = new Map();
+        this.showingSensors = false;
+        this.currentPage = 'overview';
+        this.charts = {};
+        this.currentFilter = 'all';
+        this.sortColumn = 'timestamp';
+        this.sortDirection = 'desc';
+        
+        // Analytics data
+        this.analyticsData = {
+            kpis: {
+                totalThreats: 127,
+                criticalPercentage: 18,
+                averageResponseTime: 4.2,
+                activeSensors: 24
+            },
+            threatsByType: {
+                "Unauthorized Vehicle": 32,
+                "Perimeter Breach": 28,
+                "Suspicious Activity": 41,
+                "Unknown Aircraft": 15,
+                "Cyber Intrusion": 8
+            },
+            severityDistribution: {
+                benign: 65,
+                suspicious: 42,
+                critical: 20
+            }
+        };
+        
+        // Initialize system
         this.init();
     }
-
-    async init() {
-        console.log('🛡️ Vigilance Command System Initializing...');
-        
-        this.setupEventListeners();
-        this.initializeSensors();
-        this.startSystemTime();
+    
+    init() {
         this.initializeMap();
+        this.initializeEventHandlers();
+        this.startSystemClock();
+        this.loadSampleThreats();
         this.startThreatGeneration();
-        this.startRealTimeUpdates();
-        
-        console.log('✅ Vigilance Command System Online');
+        this.updateAnalytics();
+        this.renderSensorStatus();
+        this.initializePages();
     }
-
-    setupEventListeners() {
-        // Navigation
-        document.querySelectorAll('.nav-item').forEach(item => {
-            item.addEventListener('click', (e) => this.handleNavigation(e));
+    
+    initializeMap() {
+        // Initialize main dashboard map with CartoDB Dark Matter tiles
+        this.map = L.map('map', {
+            center: [34.0892, -118.2000],
+            zoom: 12,
+            zoomControl: false
         });
-
-        // Map controls
-        const mapRefresh = document.getElementById('mapRefresh');
-        const mapExpand = document.getElementById('mapExpand');
         
-        if (mapRefresh) {
-            mapRefresh.addEventListener('click', () => this.refreshMap());
-        }
+        // Add zoom control to bottom right
+        L.control.zoom({
+            position: 'bottomright'
+        }).addTo(this.map);
         
-        if (mapExpand) {
-            mapExpand.addEventListener('click', () => this.expandMap());
-        }
-
-        // Modal controls
-        const modalClose = document.getElementById('modalClose');
-        if (modalClose) {
-            modalClose.addEventListener('click', () => this.closeModal());
-        }
-
-        // Click outside modal to close
-        const modal = document.getElementById('eventModal');
-        if (modal) {
-            modal.addEventListener('click', (e) => {
-                if (e.target === modal) {
+        // Use CartoDB Dark Matter tiles as specified
+        L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+            attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>',
+            subdomains: 'abcd',
+            maxZoom: 18
+        }).addTo(this.map);
+        
+        // Custom threat marker icons
+        this.threatIcons = {
+            critical: L.divIcon({
+                className: 'threat-marker critical',
+                html: '<div class="marker-pulse critical"></div><div class="marker-center">⚠</div>',
+                iconSize: [20, 20],
+                iconAnchor: [10, 10]
+            }),
+            suspicious: L.divIcon({
+                className: 'threat-marker suspicious',
+                html: '<div class="marker-pulse suspicious"></div><div class="marker-center">⚡</div>',
+                iconSize: [20, 20],
+                iconAnchor: [10, 10]
+            }),
+            benign: L.divIcon({
+                className: 'threat-marker benign',
+                html: '<div class="marker-pulse benign"></div><div class="marker-center">ℹ</div>',
+                iconSize: [20, 20],
+                iconAnchor: [10, 10]
+            })
+        };
+    }
+    
+    initializeEventHandlers() {
+        // Navigation handlers
+        document.querySelectorAll('.nav-link').forEach(link => {
+            link.addEventListener('click', (e) => {
+                e.preventDefault();
+                this.handleNavigation(e.target.closest('.nav-link'));
+            });
+        });
+        
+        // Dashboard feed controls
+        const pauseFeed = document.getElementById('pauseFeed');
+        const clearFeed = document.getElementById('clearFeed');
+        const showThreats = document.getElementById('showThreats');
+        const showSensors = document.getElementById('showSensors');
+        
+        if (pauseFeed) pauseFeed.addEventListener('click', () => this.toggleThreatGeneration());
+        if (clearFeed) clearFeed.addEventListener('click', () => this.clearEventFeed());
+        if (showThreats) showThreats.addEventListener('click', () => this.showThreats());
+        if (showSensors) showSensors.addEventListener('click', () => this.showSensors());
+        
+        // Modal handlers
+        const closeModalBtn = document.getElementById('closeModal');
+        const approveBtn = document.getElementById('approveBtn');
+        const rejectBtn = document.getElementById('rejectBtn');
+        const falseAlarmBtn = document.getElementById('falseAlarmBtn');
+        
+        if (closeModalBtn) closeModalBtn.addEventListener('click', () => this.closeModal());
+        if (approveBtn) approveBtn.addEventListener('click', () => this.handleThreatAction('approved'));
+        if (rejectBtn) rejectBtn.addEventListener('click', () => this.handleThreatAction('rejected'));
+        if (falseAlarmBtn) falseAlarmBtn.addEventListener('click', () => this.handleThreatAction('false_alarm'));
+        
+        // Close modal on overlay click
+        const modalOverlay = document.getElementById('threatModal');
+        if (modalOverlay) {
+            modalOverlay.addEventListener('click', (e) => {
+                if (e.target.classList.contains('modal-overlay')) {
                     this.closeModal();
                 }
             });
         }
-
-        // Event feed item clicks
+        
+        // Page-specific handlers
+        this.initializeThreatsPageHandlers();
+        this.initializeAnalyticsPageHandlers();
+        this.initializeSensorsPageHandlers();
+        this.initializeReportsPageHandlers();
+    }
+    
+    initializeThreatsPageHandlers() {
+        // Filter buttons for threats page
         document.addEventListener('click', (e) => {
-            if (e.target.closest('.event-item')) {
-                this.showEventDetails(e.target.closest('.event-item'));
+            if (e.target.classList.contains('btn-filter') && this.currentPage === 'threats') {
+                this.handleThreatFilter(e.target.dataset.filter);
+            }
+        });
+        
+        // Search input
+        const threatSearch = document.getElementById('threatSearch');
+        if (threatSearch) {
+            threatSearch.addEventListener('input', (e) => {
+                this.handleThreatSearch(e.target.value);
+            });
+        }
+        
+        // Table sorting
+        document.addEventListener('click', (e) => {
+            if (e.target.classList.contains('sortable')) {
+                this.handleTableSort(e.target.dataset.sort);
             }
         });
     }
-
-    initializeSensors() {
-        this.sensors = [
-            { id: 'drone_01', name: 'DRONE_01', status: 'active', location: [34.0522, -118.2437] },
-            { id: 'drone_23', name: 'DRONE_23', status: 'active', location: [34.1021, -118.1234] },
-            { id: 'radar_07', name: 'RADAR_07', status: 'active', location: [34.0892, -118.3012] },
-            { id: 'radar_12', name: 'RADAR_12', status: 'warning', location: [34.1156, -118.2789] },
-            { id: 'sensor_45', name: 'SENSOR_45', status: 'active', location: [34.0745, -118.2456] },
-            { id: 'cam_18', name: 'CAM_18', status: 'critical', location: [34.0967, -118.2123] }
-        ];
+    
+    initializeAnalyticsPageHandlers() {
+        // Time range selector
+        const timeRange = document.getElementById('timeRange');
+        if (timeRange) {
+            timeRange.addEventListener('change', (e) => {
+                this.handleTimeRangeChange(e.target.value);
+            });
+        }
         
-        this.updateSensorStatus();
+        // Export analytics
+        const exportAnalytics = document.getElementById('exportAnalytics');
+        if (exportAnalytics) {
+            exportAnalytics.addEventListener('click', () => {
+                this.exportAnalyticsData();
+            });
+        }
     }
-
-    updateSensorStatus() {
-        const sensorList = document.getElementById('sensorList');
-        if (!sensorList) return;
-
-        sensorList.innerHTML = this.sensors.map(sensor => `
-            <div class="sensor-item">
-                <span class="sensor-name">${sensor.name}</span>
-                <div class="sensor-status-indicator ${sensor.status}"></div>
-            </div>
-        `).join('');
+    
+    initializeSensorsPageHandlers() {
+        // Sensor filter buttons
+        document.addEventListener('click', (e) => {
+            if (e.target.classList.contains('btn-filter') && this.currentPage === 'sensors') {
+                this.handleSensorFilter(e.target.dataset.filter);
+            }
+        });
     }
-
-    startSystemTime() {
-        const updateTime = () => {
+    
+    initializeReportsPageHandlers() {
+        // Date inputs
+        const dateFrom = document.getElementById('reportDateFrom');
+        const dateTo = document.getElementById('reportDateTo');
+        
+        if (dateFrom && dateTo) {
+            const today = new Date().toISOString().split('T')[0];
+            const weekAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+            dateFrom.value = weekAgo;
+            dateTo.value = today;
+        }
+        
+        // Export buttons
+        const exportCSV = document.getElementById('exportCSV');
+        const exportJSON = document.getElementById('exportJSON');
+        const exportSummary = document.getElementById('exportSummary');
+        const generateReport = document.getElementById('generateReport');
+        
+        if (exportCSV) exportCSV.addEventListener('click', () => this.exportData('csv'));
+        if (exportJSON) exportJSON.addEventListener('click', () => this.exportData('json'));
+        if (exportSummary) exportSummary.addEventListener('click', () => this.exportData('summary'));
+        if (generateReport) generateReport.addEventListener('click', () => this.generateReport());
+    }
+    
+    initializePages() {
+        // Initialize specific page content
+        this.renderThreatsTable();
+        this.renderSensorsGrid();
+        this.renderReportsSummary();
+        this.updateKPICards();
+    }
+    
+    startSystemClock() {
+        const updateClock = () => {
             const now = new Date();
-            const timeString = now.toLocaleString('en-US', {
-                year: 'numeric',
-                month: '2-digit',
-                day: '2-digit',
-                hour: '2-digit',
-                minute: '2-digit',
-                second: '2-digit',
-                hour12: false
-            }).replace(/(\d+)\/(\d+)\/(\d+),?\s*/, '$3-$1-$2 ');
-            
+            const timeString = now.toLocaleTimeString('en-US', {
+                hour12: false,
+                timeZone: 'UTC'
+            }) + ' UTC';
             const timeElement = document.getElementById('systemTime');
             if (timeElement) {
                 timeElement.textContent = timeString;
             }
         };
-
-        updateTime();
-        setInterval(updateTime, 1000);
+        
+        updateClock();
+        setInterval(updateClock, 1000);
     }
-
-    async initializeMap() {
-        try {
-            // Set Mapbox access token - using a demo token, replace with your own
-            mapboxgl.accessToken = 'pk.eyJ1IjoiZGVtb3VzZXIiLCJhIjoiY2xrZ3l6cWs2MWI4bDNsbjI0OHUzZDkweiJ9.demo_token_here';
-            
-            this.map = new mapboxgl.Map({
-                container: 'map',
-                style: 'mapbox://styles/mapbox/dark-v10',
-                center: [-118.2437, 34.0522], // Los Angeles
-                zoom: 10,
-                pitch: 45,
-                bearing: -17.6,
-                attributionControl: false
-            });
-
-            this.map.on('load', () => {
-                console.log('🗺️ Tactical Map Loaded');
-                this.addMapSources();
-                this.addMapLayers();
-            });
-
-        } catch (error) {
-            console.warn('⚠️ Mapbox not available, using fallback map');
-            this.initializeFallbackMap();
-        }
-    }
-
-    initializeFallbackMap() {
-        const mapContainer = document.getElementById('map');
-        if (mapContainer) {
-            mapContainer.innerHTML = `
-                <div style="
-                    width: 100%;
-                    height: 100%;
-                    background: linear-gradient(135deg, #1a1d24 0%, #2c2f36 100%);
-                    display: flex;
-                    flex-direction: column;
-                    align-items: center;
-                    justify-content: center;
-                    color: #a0a6b1;
-                    position: relative;
-                    overflow: hidden;
-                ">
-                    <div style="
-                        position: absolute;
-                        top: 0;
-                        left: 0;
-                        right: 0;
-                        bottom: 0;
-                        background-image: 
-                            radial-gradient(circle at 25% 25%, rgba(0, 212, 255, 0.1) 0%, transparent 50%),
-                            radial-gradient(circle at 75% 75%, rgba(255, 77, 77, 0.1) 0%, transparent 50%),
-                            radial-gradient(circle at 50% 50%, rgba(0, 255, 148, 0.1) 0%, transparent 50%);
-                    "></div>
-                    <i class="fas fa-map" style="font-size: 48px; margin-bottom: 16px; opacity: 0.3;"></i>
-                    <h3 style="margin-bottom: 8px; font-size: 18px;">TACTICAL MAP</h3>
-                    <p style="text-align: center; font-size: 14px; opacity: 0.7;">Real-time threat visualization</p>
-                    <div class="fallback-markers" style="position: absolute; top: 0; left: 0; right: 0; bottom: 0;"></div>
-                </div>
-            `;
-            
-            this.createFallbackMarkers();
-        }
-    }
-
-    createFallbackMarkers() {
-        const markersContainer = document.querySelector('.fallback-markers');
-        if (!markersContainer) return;
-
-        const markerPositions = [
-            { x: 30, y: 40, type: 'critical' },
-            { x: 60, y: 30, type: 'warning' },
-            { x: 45, y: 65, type: 'benign' },
-            { x: 75, y: 50, type: 'warning' },
-            { x: 25, y: 70, type: 'benign' }
+    
+    loadSampleThreats() {
+        const sampleThreats = [
+            {
+                id: 1,
+                timestamp: Date.now() - 300000,
+                sensor: "DRONE_01",
+                type: "Unauthorized Vehicle",
+                severity: "critical",
+                confidence: 0.92,
+                location: {lat: 34.0522, lng: -118.2437},
+                status: "pending",
+                details: "Unregistered vehicle detected in restricted zone Alpha-7"
+            },
+            {
+                id: 2,
+                timestamp: Date.now() - 240000,
+                sensor: "RADAR_07", 
+                type: "Perimeter Breach",
+                severity: "suspicious",
+                confidence: 0.78,
+                location: {lat: 34.1021, lng: -118.1234},
+                status: "pending",
+                details: "Motion detected at north perimeter fence"
+            },
+            {
+                id: 3,
+                timestamp: Date.now() - 180000,
+                sensor: "CAM_18",
+                type: "Suspicious Activity",
+                severity: "benign",
+                confidence: 0.65,
+                location: {lat: 34.0892, lng: -118.3012},
+                status: "pending", 
+                details: "Individual loitering near main entrance"
+            }
         ];
-
-        markerPositions.forEach((pos, index) => {
-            const marker = document.createElement('div');
-            marker.style.cssText = `
-                position: absolute;
-                left: ${pos.x}%;
-                top: ${pos.y}%;
-                width: 12px;
-                height: 12px;
-                border-radius: 50%;
-                border: 2px solid rgba(255, 255, 255, 0.5);
-                transform: translate(-50%, -50%);
-                animation: markerPulse 2s infinite;
-                animation-delay: ${index * 0.4}s;
-            `;
-
-            switch (pos.type) {
-                case 'critical':
-                    marker.style.background = '#FF4D4D';
-                    marker.style.boxShadow = '0 0 15px rgba(255, 77, 77, 0.6)';
-                    break;
-                case 'warning':
-                    marker.style.background = '#FFC14D';
-                    marker.style.boxShadow = '0 0 15px rgba(255, 193, 77, 0.6)';
-                    break;
-                case 'benign':
-                    marker.style.background = '#00FF94';
-                    marker.style.boxShadow = '0 0 15px rgba(0, 255, 148, 0.6)';
-                    break;
-            }
-
-            markersContainer.appendChild(marker);
+        
+        sampleThreats.forEach(threat => {
+            this.threats.unshift(threat);
+            this.addThreatToFeed(threat, false);
+            this.addThreatToMap(threat);
         });
+        
+        this.threatIdCounter = 4;
     }
-
-    addMapSources() {
-        if (!this.map) return;
-
-        this.map.addSource('threats', {
-            type: 'geojson',
-            data: {
-                type: 'FeatureCollection',
-                features: []
-            }
-        });
-    }
-
-    addMapLayers() {
-        if (!this.map) return;
-
-        // Add threat markers layer
-        this.map.addLayer({
-            id: 'threat-markers',
-            type: 'circle',
-            source: 'threats',
-            paint: {
-                'circle-radius': [
-                    'case',
-                    ['==', ['get', 'threat_level'], 5], 12,
-                    ['==', ['get', 'threat_level'], 4], 10,
-                    ['==', ['get', 'threat_level'], 3], 8,
-                    6
-                ],
-                'circle-color': [
-                    'case',
-                    ['>=', ['get', 'threat_level'], 4], '#FF4D4D',
-                    ['==', ['get', 'threat_level'], 3], '#FFC14D',
-                    '#00FF94'
-                ],
-                'circle-stroke-width': 2,
-                'circle-stroke-color': 'rgba(255, 255, 255, 0.5)',
-                'circle-opacity': 0.8
-            }
-        });
-
-        // Add pulse effect for critical threats
-        this.map.addLayer({
-            id: 'threat-pulse',
-            type: 'circle',
-            source: 'threats',
-            filter: ['>=', ['get', 'threat_level'], 4],
-            paint: {
-                'circle-radius': {
-                    stops: [[0, 15], [1, 25]]
-                },
-                'circle-color': '#FF4D4D',
-                'circle-opacity': {
-                    stops: [[0, 0.8], [1, 0]]
-                }
-            }
-        });
-    }
-
+    
     startThreatGeneration() {
         const generateThreat = () => {
+            if (!this.isGeneratingThreats) return;
+            
             const threat = this.generateRandomThreat();
-            this.addThreatEvent(threat);
+            this.threats.unshift(threat);
+            this.addThreatToFeed(threat, true);
+            this.addThreatToMap(threat);
+            this.updateAnalytics();
+            this.renderThreatsTable();
             
-            // Schedule next threat generation (1-5 seconds)
-            const nextInterval = Math.random() * 4000 + 1000;
-            setTimeout(generateThreat, nextInterval);
+            // Limit feed to 50 items
+            if (this.threats.length > 50) {
+                const removedThreat = this.threats.pop();
+                this.removeThreatFromFeed();
+                this.removeThreatFromMap(removedThreat.id);
+            }
         };
-
-        // Start generating threats after 2 seconds
-        setTimeout(generateThreat, 2000);
+        
+        // Generate first threat after 2 seconds
+        setTimeout(() => {
+            generateThreat();
+            
+            // Continue generating threats at random intervals
+            const scheduleNext = () => {
+                const delay = Math.random() * 5000 + 3000; // 3-8 seconds
+                setTimeout(() => {
+                    generateThreat();
+                    scheduleNext();
+                }, delay);
+            };
+            
+            scheduleNext();
+        }, 2000);
     }
-
+    
     generateRandomThreat() {
-        const sensorTypes = ['drone', 'radar', 'sensor', 'cam'];
-        const threatTypes = ['movement_detected', 'anomaly', 'signal', 'intrusion', 'suspicious_activity'];
-        const locations = [
-            [34.0522, -118.2437], // LA Downtown
-            [34.1021, -118.1234], // Hollywood
-            [34.0892, -118.3012], // Beverly Hills
-            [34.1156, -118.2789], // West Hollywood
-            [34.0745, -118.2456], // Koreatown
-            [34.0967, -118.2123], // Silver Lake
-            [34.0408, -118.2512], // USC Area
-            [34.0689, -118.1987]  // Arts District
+        const sensorNames = this.sensors.map(s => s.name);
+        const threat = {
+            id: this.threatIdCounter++,
+            timestamp: Date.now(),
+            sensor: sensorNames[Math.floor(Math.random() * sensorNames.length)],
+            type: this.threatTypes[Math.floor(Math.random() * this.threatTypes.length)],
+            severity: this.severityLevels[Math.floor(Math.random() * this.severityLevels.length)],
+            confidence: Math.random() * 0.4 + 0.6, // 0.6 - 1.0
+            location: {
+                lat: Math.random() * (this.locationBounds.north - this.locationBounds.south) + this.locationBounds.south,
+                lng: Math.random() * (this.locationBounds.east - this.locationBounds.west) + this.locationBounds.west
+            },
+            status: 'pending',
+            details: this.generateThreatDetails()
+        };
+        
+        return threat;
+    }
+    
+    generateThreatDetails() {
+        const details = [
+            "Anomalous pattern detected in sector",
+            "Unauthorized access attempt identified",
+            "Signal interference detected",
+            "Movement pattern analysis indicates threat",
+            "Biometric scan mismatch detected",
+            "Thermal signature anomaly observed",
+            "Network intrusion attempt blocked",
+            "Perimeter sensor activation recorded"
         ];
-
-        const sensorType = sensorTypes[Math.floor(Math.random() * sensorTypes.length)];
-        const sensorNumber = String(Math.floor(Math.random() * 50) + 1).padStart(2, '0');
-        const sensorId = `${sensorType}_${sensorNumber}`;
         
-        const location = locations[Math.floor(Math.random() * locations.length)];
-        // Add some random variation to location
-        const lat = location[0] + (Math.random() - 0.5) * 0.02;
-        const lng = location[1] + (Math.random() - 0.5) * 0.02;
-
-        const threatLevel = this.generateThreatLevel();
-        const confidence = Math.random() * 0.4 + 0.6; // 0.6 - 1.0
-
-        return {
-            id: Date.now() + Math.random(),
-            timestamp: new Date().toISOString(),
-            sensor_id: sensorId,
-            location: [lat, lng],
-            threat_level: threatLevel,
-            confidence: confidence,
-            type: threatTypes[Math.floor(Math.random() * threatTypes.length)]
-        };
+        return details[Math.floor(Math.random() * details.length)];
     }
-
-    generateThreatLevel() {
-        const rand = Math.random();
-        if (rand < 0.6) return Math.floor(Math.random() * 2) + 1; // 1-2 (benign)
-        if (rand < 0.85) return 3; // suspicious
-        return Math.floor(Math.random() * 2) + 4; // 4-5 (critical)
-    }
-
-    addThreatEvent(threat) {
-        this.events.unshift(threat);
+    
+    addThreatToFeed(threat, isNew = false) {
+        const feed = document.getElementById('eventFeed');
+        if (!feed) return;
         
-        // Keep only last 50 events
-        if (this.events.length > 50) {
-            this.events = this.events.slice(0, 50);
-        }
-
-        this.updateEventCounts();
-        this.updateEventFeed();
-        this.updateMap(threat);
-        this.updateAnalytics();
+        const eventElement = this.createEventElement(threat, isNew);
         
-        // Play alert sound for critical threats
-        if (threat.threat_level >= 4) {
-            this.playAlertSound();
-        }
-    }
-
-    updateEventCounts() {
-        this.eventCounts = {
-            benign: this.events.filter(e => e.threat_level <= 2).length,
-            suspicious: this.events.filter(e => e.threat_level === 3).length,
-            critical: this.events.filter(e => e.threat_level >= 4).length
-        };
-    }
-
-    updateEventFeed() {
-        const eventFeed = document.getElementById('eventFeed');
-        if (!eventFeed) return;
-
-        const recentEvents = this.events.slice(0, 20);
-        eventFeed.innerHTML = recentEvents.map(event => {
-            const severity = event.threat_level >= 4 ? 'critical' : 
-                           event.threat_level === 3 ? 'warning' : 'benign';
-            
-            return `
-                <div class="event-item ${severity}" data-event-id="${event.id}">
-                    <div class="event-header">
-                        <span class="event-sensor">${event.sensor_id}</span>
-                        <span class="event-timestamp">${this.formatTimestamp(event.timestamp)}</span>
-                    </div>
-                    <div class="event-details">
-                        <div class="event-type">${event.type.replace(/_/g, ' ')}</div>
-                        <div class="event-location">LAT: ${event.location[0].toFixed(4)} LNG: ${event.location[1].toFixed(4)}</div>
-                        <div class="event-confidence">
-                            <span>Confidence:</span>
-                            <div class="confidence-bar">
-                                <div class="confidence-fill ${severity}" style="width: ${(event.confidence * 100)}%"></div>
-                            </div>
-                            <span>${(event.confidence * 100).toFixed(0)}%</span>
-                        </div>
-                    </div>
-                </div>
-            `;
-        }).join('');
-    }
-
-    updateMap(threat) {
-        if (this.map && this.map.getSource('threats')) {
-            const features = this.events.slice(0, 30).map(event => ({
-                type: 'Feature',
-                geometry: {
-                    type: 'Point',
-                    coordinates: [event.location[1], event.location[0]]
-                },
-                properties: {
-                    threat_level: event.threat_level,
-                    sensor_id: event.sensor_id,
-                    type: event.type,
-                    confidence: event.confidence,
-                    timestamp: event.timestamp
-                }
-            }));
-
-            this.map.getSource('threats').setData({
-                type: 'FeatureCollection',
-                features: features
-            });
-        }
-    }
-
-    updateAnalytics() {
-        // Update metric cards
-        document.getElementById('benignCount').textContent = this.eventCounts.benign;
-        document.getElementById('suspiciousCount').textContent = this.eventCounts.suspicious;
-        document.getElementById('criticalCount').textContent = this.eventCounts.critical;
-
-        // Update distribution bars
-        const total = this.eventCounts.benign + this.eventCounts.suspicious + this.eventCounts.critical;
-        if (total > 0) {
-            const benignPercent = (this.eventCounts.benign / total) * 100;
-            const suspiciousPercent = (this.eventCounts.suspicious / total) * 100;
-            const criticalPercent = (this.eventCounts.critical / total) * 100;
-
-            document.getElementById('benignBar').style.width = `${benignPercent}%`;
-            document.getElementById('suspiciousBar').style.width = `${suspiciousPercent}%`;
-            document.getElementById('criticalBar').style.width = `${criticalPercent}%`;
-        }
-    }
-
-    showEventDetails(eventElement) {
-        const eventId = eventElement.dataset.eventId;
-        const event = this.events.find(e => e.id == eventId);
-        
-        if (!event) return;
-
-        const modal = document.getElementById('eventModal');
-        const modalBody = document.getElementById('modalBody');
-        
-        if (!modal || !modalBody) return;
-
-        const severity = event.threat_level >= 4 ? 'CRITICAL' : 
-                        event.threat_level === 3 ? 'SUSPICIOUS' : 'BENIGN';
-        const severityClass = event.threat_level >= 4 ? 'critical' : 
-                             event.threat_level === 3 ? 'warning' : 'benign';
-
-        modalBody.innerHTML = `
-            <div style="display: grid; gap: 20px;">
-                <div class="detail-section">
-                    <h4>EVENT CLASSIFICATION</h4>
-                    <div class="detail-grid">
-                        <div class="detail-item">
-                            <span class="detail-label">Threat Level:</span>
-                            <span class="detail-value ${severityClass}">${severity} (${event.threat_level}/5)</span>
-                        </div>
-                        <div class="detail-item">
-                            <span class="detail-label">Confidence:</span>
-                            <span class="detail-value">${(event.confidence * 100).toFixed(1)}%</span>
-                        </div>
-                        <div class="detail-item">
-                            <span class="detail-label">Event Type:</span>
-                            <span class="detail-value">${event.type.replace(/_/g, ' ').toUpperCase()}</span>
-                        </div>
-                    </div>
-                </div>
-                
-                <div class="detail-section">
-                    <h4>SENSOR INFORMATION</h4>
-                    <div class="detail-grid">
-                        <div class="detail-item">
-                            <span class="detail-label">Sensor ID:</span>
-                            <span class="detail-value sensor-id">${event.sensor_id}</span>
-                        </div>
-                        <div class="detail-item">
-                            <span class="detail-label">Timestamp:</span>
-                            <span class="detail-value timestamp">${this.formatFullTimestamp(event.timestamp)}</span>
-                        </div>
-                    </div>
-                </div>
-                
-                <div class="detail-section">
-                    <h4>GEOLOCATION DATA</h4>
-                    <div class="detail-grid">
-                        <div class="detail-item">
-                            <span class="detail-label">Latitude:</span>
-                            <span class="detail-value coordinates">${event.location[0].toFixed(6)}</span>
-                        </div>
-                        <div class="detail-item">
-                            <span class="detail-label">Longitude:</span>
-                            <span class="detail-value coordinates">${event.location[1].toFixed(6)}</span>
-                        </div>
-                    </div>
-                </div>
-                
-                <div class="detail-section">
-                    <h4>RECOMMENDED ACTIONS</h4>
-                    <ul class="action-list">
-                        ${this.getRecommendedActions(event).map(action => 
-                            `<li>${action}</li>`
-                        ).join('')}
-                    </ul>
-                </div>
-            </div>
-        `;
-
-        // Add modal styles
-        const style = document.createElement('style');
-        style.textContent = `
-            .detail-section {
-                background: var(--bg-card);
-                border: 1px solid var(--border-color);
-                border-radius: var(--radius-base);
-                padding: var(--space-lg);
-            }
-            .detail-section h4 {
-                font-size: var(--font-size-sm);
-                font-weight: 600;
-                color: var(--text-primary);
-                text-transform: uppercase;
-                letter-spacing: 1px;
-                margin-bottom: var(--space-md);
-                border-bottom: 1px solid var(--border-color);
-                padding-bottom: var(--space-sm);
-            }
-            .detail-grid {
-                display: grid;
-                gap: var(--space-md);
-            }
-            .detail-item {
-                display: flex;
-                justify-content: space-between;
-                align-items: center;
-            }
-            .detail-label {
-                font-size: var(--font-size-sm);
-                color: var(--text-secondary);
-                font-weight: 500;
-            }
-            .detail-value {
-                font-family: var(--font-mono);
-                font-size: var(--font-size-sm);
-                color: var(--text-primary);
-                font-weight: 600;
-            }
-            .detail-value.critical { color: var(--color-critical); }
-            .detail-value.warning { color: var(--color-warning); }
-            .detail-value.benign { color: var(--color-benign); }
-            .sensor-id, .coordinates, .timestamp {
-                background: rgba(0, 212, 255, 0.1);
-                padding: 2px 6px;
-                border-radius: var(--radius-sm);
-                border: 1px solid rgba(0, 212, 255, 0.2);
-            }
-            .action-list {
-                list-style: none;
-                padding: 0;
-            }
-            .action-list li {
-                padding: var(--space-sm);
-                margin-bottom: var(--space-sm);
-                background: rgba(0, 212, 255, 0.05);
-                border-left: 3px solid var(--color-info);
-                border-radius: var(--radius-sm);
-                font-size: var(--font-size-sm);
-                color: var(--text-secondary);
-            }
-        `;
-        document.head.appendChild(style);
-
-        modal.classList.remove('hidden');
-        modal.classList.add('show');
-    }
-
-    getRecommendedActions(event) {
-        const actions = [];
-        
-        if (event.threat_level >= 4) {
-            actions.push('IMMEDIATE: Alert security personnel');
-            actions.push('Deploy rapid response team to coordinates');
-            actions.push('Establish perimeter around threat zone');
-            actions.push('Activate emergency protocols');
-        } else if (event.threat_level === 3) {
-            actions.push('Increase surveillance in target area');
-            actions.push('Notify patrol units of suspicious activity');
-            actions.push('Monitor for escalation patterns');
+        if (feed.firstChild) {
+            feed.insertBefore(eventElement, feed.firstChild);
         } else {
-            actions.push('Log event for pattern analysis');
-            actions.push('Continue routine monitoring');
-            actions.push('Update threat assessment database');
+            feed.appendChild(eventElement);
         }
+    }
+    
+    createEventElement(threat, isNew = false) {
+        const div = document.createElement('div');
+        div.className = `event-item ${threat.severity}${isNew ? ' new' : ''}`;
+        div.dataset.threatId = threat.id;
         
-        if (event.confidence < 0.8) {
-            actions.push('Request additional sensor verification');
-        }
-        
-        return actions;
-    }
-
-    closeModal() {
-        const modal = document.getElementById('eventModal');
-        if (modal) {
-            modal.classList.remove('show');
-            setTimeout(() => {
-                modal.classList.add('hidden');
-            }, 300);
-        }
-    }
-
-    playAlertSound() {
-        // Create audio context for alert sound
-        try {
-            const audioContext = new (window.AudioContext || window.webkitAudioContext)();
-            const oscillator = audioContext.createOscillator();
-            const gainNode = audioContext.createGain();
-            
-            oscillator.connect(gainNode);
-            gainNode.connect(audioContext.destination);
-            
-            oscillator.frequency.setValueAtTime(800, audioContext.currentTime);
-            oscillator.frequency.setValueAtTime(600, audioContext.currentTime + 0.1);
-            oscillator.type = 'sine';
-            
-            gainNode.gain.setValueAtTime(0, audioContext.currentTime);
-            gainNode.gain.linearRampToValueAtTime(0.3, audioContext.currentTime + 0.01);
-            gainNode.gain.linearRampToValueAtTime(0, audioContext.currentTime + 0.2);
-            
-            oscillator.start(audioContext.currentTime);
-            oscillator.stop(audioContext.currentTime + 0.2);
-        } catch (error) {
-            console.warn('Audio alert not available');
-        }
-    }
-
-    startRealTimeUpdates() {
-        // Update sensor statuses periodically
-        setInterval(() => {
-            this.sensors.forEach(sensor => {
-                if (Math.random() < 0.05) { // 5% chance of status change
-                    const statuses = ['active', 'warning', 'critical'];
-                    sensor.status = statuses[Math.floor(Math.random() * statuses.length)];
-                }
-            });
-            this.updateSensorStatus();
-        }, 10000);
-
-        // Simulate connection status changes
-        setInterval(() => {
-            if (Math.random() < 0.02) { // 2% chance of connection issue
-                this.simulateConnectionIssue();
-            }
-        }, 15000);
-    }
-
-    simulateConnectionIssue() {
-        const statusDot = document.querySelector('.status-dot');
-        const statusText = document.querySelector('.status-text');
-        
-        if (statusDot && statusText) {
-            statusDot.classList.remove('status-online');
-            statusDot.style.background = '#FFC14D';
-            statusText.textContent = 'RECONNECTING';
-            statusText.style.color = '#FFC14D';
-            
-            // Restore connection after 2-5 seconds
-            setTimeout(() => {
-                statusDot.classList.add('status-online');
-                statusDot.style.background = '';
-                statusText.textContent = 'ONLINE';
-                statusText.style.color = '';
-            }, Math.random() * 3000 + 2000);
-        }
-    }
-
-    handleNavigation(e) {
-        document.querySelectorAll('.nav-item').forEach(item => {
-            item.classList.remove('active');
-        });
-        e.currentTarget.classList.add('active');
-        
-        const section = e.currentTarget.dataset.section;
-        console.log(`📊 Navigating to ${section} section`);
-        
-        // In a real app, this would switch views
-        this.showNotification(`Switched to ${section.toUpperCase()} view`, 'info');
-    }
-
-    refreshMap() {
-        console.log('🔄 Refreshing tactical map...');
-        if (this.map) {
-            this.map.flyTo({
-                center: [-118.2437, 34.0522],
-                zoom: 10,
-                duration: 1000
-            });
-        }
-        this.showNotification('Map refreshed', 'success');
-    }
-
-    expandMap() {
-        console.log('🔍 Expanding map view...');
-        const mapPanel = document.querySelector('.map-panel');
-        if (mapPanel) {
-            mapPanel.style.transform = 'scale(1.02)';
-            mapPanel.style.zIndex = '10';
-            setTimeout(() => {
-                mapPanel.style.transform = '';
-                mapPanel.style.zIndex = '';
-            }, 300);
-        }
-        this.showNotification('Map view expanded', 'info');
-    }
-
-    showNotification(message, type = 'info') {
-        const notification = document.createElement('div');
-        notification.className = `notification notification-${type}`;
-        notification.innerHTML = `
-            <i class="fas ${this.getNotificationIcon(type)}"></i>
-            <span>${message}</span>
-            <button class="notification-close">
-                <i class="fas fa-times"></i>
-            </button>
-        `;
-
-        Object.assign(notification.style, {
-            position: 'fixed',
-            top: '80px',
-            right: '20px',
-            background: 'var(--bg-panel)',
-            border: '1px solid var(--border-color)',
-            borderRadius: 'var(--radius-base)',
-            padding: 'var(--space-md)',
-            minWidth: '300px',
-            zIndex: '1001',
-            display: 'flex',
-            alignItems: 'center',
-            gap: 'var(--space-sm)',
-            boxShadow: 'var(--shadow-lg)',
-            transform: 'translateX(100%)',
-            transition: 'transform 0.3s ease',
-            fontFamily: 'var(--font-ui)',
-            fontSize: 'var(--font-size-sm)'
-        });
-
-        const colors = {
-            success: 'var(--color-benign)',
-            warning: 'var(--color-warning)',
-            error: 'var(--color-critical)',
-            info: 'var(--color-info)'
-        };
-
-        notification.style.borderLeftColor = colors[type] || colors.info;
-        notification.querySelector('i').style.color = colors[type] || colors.info;
-
-        document.body.appendChild(notification);
-
-        setTimeout(() => {
-            notification.style.transform = 'translateX(0)';
-        }, 100);
-
-        const closeBtn = notification.querySelector('.notification-close');
-        closeBtn.addEventListener('click', () => this.closeNotification(notification));
-
-        setTimeout(() => {
-            if (document.body.contains(notification)) {
-                this.closeNotification(notification);
-            }
-        }, 4000);
-    }
-
-    closeNotification(notification) {
-        notification.style.transform = 'translateX(100%)';
-        setTimeout(() => {
-            if (document.body.contains(notification)) {
-                document.body.removeChild(notification);
-            }
-        }, 300);
-    }
-
-    getNotificationIcon(type) {
-        const icons = {
-            success: 'fa-check-circle',
-            warning: 'fa-exclamation-triangle',
-            error: 'fa-times-circle',
-            info: 'fa-info-circle'
-        };
-        return icons[type] || icons.info;
-    }
-
-    formatTimestamp(timestamp) {
-        const date = new Date(timestamp);
-        return date.toLocaleTimeString('en-US', {
+        const timestamp = new Date(threat.timestamp).toLocaleTimeString('en-US', {
             hour12: false,
             hour: '2-digit',
             minute: '2-digit',
             second: '2-digit'
         });
-    }
-
-    formatFullTimestamp(timestamp) {
-        const date = new Date(timestamp);
-        return date.toLocaleString('en-US', {
-            year: 'numeric',
-            month: '2-digit',
-            day: '2-digit',
-            hour: '2-digit',
-            minute: '2-digit',
-            second: '2-digit',
-            hour12: false
+        
+        const confidencePercent = Math.round(threat.confidence * 100);
+        
+        div.innerHTML = `
+            <div class="event-header">
+                <span class="event-severity ${threat.severity}">${threat.severity}</span>
+                <span class="event-timestamp">${timestamp}</span>
+            </div>
+            <div class="event-details">
+                <div class="event-sensor">${threat.sensor}</div>
+                <div class="event-type">${threat.type}</div>
+                <div class="event-description">${threat.details}</div>
+            </div>
+            <div class="event-footer">
+                <div class="confidence-bar">
+                    <span>Confidence:</span>
+                    <div class="confidence-progress">
+                        <div class="confidence-fill" style="width: ${confidencePercent}%"></div>
+                    </div>
+                    <span>${confidencePercent}%</span>
+                </div>
+                <div class="event-actions">
+                    <button class="btn-event approve" data-action="approve" data-threat-id="${threat.id}">✓</button>
+                    <button class="btn-event reject" data-action="reject" data-threat-id="${threat.id}">✕</button>
+                    <button class="btn-event false-alarm" data-action="false-alarm" data-threat-id="${threat.id}">⚠</button>
+                </div>
+            </div>
+        `;
+        
+        // Add click handler for modal
+        div.addEventListener('click', (e) => {
+            if (!e.target.classList.contains('btn-event') && !e.target.closest('.btn-event')) {
+                this.openThreatModal(threat);
+            }
         });
+        
+        // Add action button handlers
+        div.querySelectorAll('.btn-event').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                const action = e.target.dataset.action;
+                const threatId = parseInt(e.target.dataset.threatId);
+                this.handleQuickAction(threatId, action);
+            });
+        });
+        
+        return div;
+    }
+    
+    addThreatToMap(threat) {
+        const marker = L.marker(
+            [threat.location.lat, threat.location.lng],
+            { icon: this.threatIcons[threat.severity] }
+        ).addTo(this.map);
+        
+        marker.bindPopup(`
+            <div style="color: #000; font-family: 'Inter', sans-serif;">
+                <strong>${threat.type}</strong><br>
+                <span style="color: #666;">Sensor: ${threat.sensor}</span><br>
+                <span style="color: #666;">Confidence: ${Math.round(threat.confidence * 100)}%</span><br>
+                <span style="color: #666;">${new Date(threat.timestamp).toLocaleTimeString()}</span>
+            </div>
+        `);
+        
+        marker.on('click', () => {
+            this.openThreatModal(threat);
+        });
+        
+        this.threatMarkers.set(threat.id, marker);
+        
+        if (!this.showingSensors) {
+            this.hideSensorMarkers();
+        }
+    }
+    
+    removeThreatFromMap(threatId) {
+        const marker = this.threatMarkers.get(threatId);
+        if (marker) {
+            this.map.removeLayer(marker);
+            this.threatMarkers.delete(threatId);
+        }
+    }
+    
+    removeThreatFromFeed() {
+        const feed = document.getElementById('eventFeed');
+        if (feed && feed.lastChild) {
+            feed.removeChild(feed.lastChild);
+        }
+    }
+    
+    showThreats() {
+        this.showingSensors = false;
+        const threatsBtn = document.getElementById('showThreats');
+        const sensorsBtn = document.getElementById('showSensors');
+        
+        if (threatsBtn) threatsBtn.classList.add('active');
+        if (sensorsBtn) sensorsBtn.classList.remove('active');
+        
+        this.hideSensorMarkers();
+        this.showThreatMarkers();
+    }
+    
+    showSensors() {
+        this.showingSensors = true;
+        const sensorsBtn = document.getElementById('showSensors');
+        const threatsBtn = document.getElementById('showThreats');
+        
+        if (sensorsBtn) sensorsBtn.classList.add('active');
+        if (threatsBtn) threatsBtn.classList.remove('active');
+        
+        this.hideThreatMarkers();
+        this.showSensorMarkers();
+    }
+    
+    showThreatMarkers() {
+        this.threatMarkers.forEach(marker => {
+            marker.addTo(this.map);
+        });
+    }
+    
+    hideThreatMarkers() {
+        this.threatMarkers.forEach(marker => {
+            this.map.removeLayer(marker);
+        });
+    }
+    
+    showSensorMarkers() {
+        this.sensors.forEach(sensor => {
+            if (!this.sensorMarkers.has(sensor.id)) {
+                const color = sensor.status === 'active' ? '#00FF94' : 
+                             sensor.status === 'warning' ? '#FFC14D' : '#FF4D4D';
+                             
+                const marker = L.circleMarker(sensor.location, {
+                    color: color,
+                    fillColor: color,
+                    fillOpacity: 0.3,
+                    radius: 8
+                }).addTo(this.map);
+                
+                marker.bindPopup(`
+                    <div style="color: #000; font-family: 'Inter', sans-serif;">
+                        <strong>${sensor.name}</strong><br>
+                        <span style="color: #666;">Status: ${sensor.status.toUpperCase()}</span><br>
+                        <span style="color: #666;">Type: ${sensor.type.toUpperCase()}</span><br>
+                        <span style="color: #666;">Battery: ${sensor.batteryLevel}%</span>
+                    </div>
+                `);
+                
+                this.sensorMarkers.set(sensor.id, marker);
+            } else {
+                this.sensorMarkers.get(sensor.id).addTo(this.map);
+            }
+        });
+    }
+    
+    hideSensorMarkers() {
+        this.sensorMarkers.forEach(marker => {
+            this.map.removeLayer(marker);
+        });
+    }
+    
+    handleNavigation(link) {
+        // Remove active class from all nav items
+        document.querySelectorAll('.nav-item').forEach(item => {
+            item.classList.remove('active');
+        });
+        
+        // Add active class to clicked item
+        const navItem = link.closest('.nav-item');
+        if (navItem) {
+            navItem.classList.add('active');
+        }
+        
+        // Hide all page content
+        document.querySelectorAll('.page-content').forEach(page => {
+            page.classList.remove('active');
+        });
+        
+        // Show selected page
+        const panel = link.dataset.panel;
+        const pageElement = document.getElementById(`${panel}-page`);
+        if (pageElement) {
+            pageElement.classList.add('active');
+            this.currentPage = panel;
+            
+            // Page-specific initialization
+            if (panel === 'analytics' && !this.charts.initialized) {
+                setTimeout(() => this.initializeCharts(), 200);
+            } else if (panel === 'threats') {
+                setTimeout(() => this.initializeThreatsMap(), 100);
+            } else if (panel === 'sensors') {
+                setTimeout(() => this.initializeSensorsMap(), 100);
+            }
+        }
+        
+        // Trigger page transitions
+        this.handlePageTransition(panel);
+    }
+    
+    handlePageTransition(panel) {
+        // Add smooth transition effect
+        const content = document.querySelector('.content-area');
+        if (content) {
+            content.style.opacity = '0.7';
+            setTimeout(() => {
+                content.style.opacity = '1';
+            }, 150);
+        }
+    }
+    
+    initializeThreatsMap() {
+        const mapElement = document.getElementById('threatsMap');
+        if (mapElement && !this.threatsMap) {
+            this.threatsMap = L.map('threatsMap', {
+                center: [34.0892, -118.2000],
+                zoom: 12
+            });
+            
+            L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+                attribution: '&copy; <a href="https://carto.com/attributions">CARTO</a>',
+                maxZoom: 18
+            }).addTo(this.threatsMap);
+            
+            // Add threat markers to threats page map
+            this.threats.forEach(threat => {
+                L.marker([threat.location.lat, threat.location.lng], 
+                    { icon: this.threatIcons[threat.severity] }).addTo(this.threatsMap);
+            });
+        }
+        if (this.threatsMap) {
+            setTimeout(() => this.threatsMap.invalidateSize(), 100);
+        }
+    }
+    
+    initializeSensorsMap() {
+        const mapElement = document.getElementById('sensorsMap');
+        if (mapElement && !this.sensorsMap) {
+            this.sensorsMap = L.map('sensorsMap', {
+                center: [34.0892, -118.2000],
+                zoom: 12
+            });
+            
+            L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+                attribution: '&copy; <a href="https://carto.com/attributions">CARTO</a>',
+                maxZoom: 18
+            }).addTo(this.sensorsMap);
+            
+            // Add sensor markers
+            this.sensors.forEach(sensor => {
+                const color = sensor.status === 'active' ? '#00FF94' : 
+                             sensor.status === 'warning' ? '#FFC14D' : '#FF4D4D';
+                
+                L.circleMarker(sensor.location, {
+                    color: color,
+                    fillColor: color,
+                    fillOpacity: 0.5,
+                    radius: 10
+                }).addTo(this.sensorsMap)
+                  .bindPopup(`<div style="color: #000;"><strong>${sensor.name}</strong><br>Status: ${sensor.status}</div>`);
+            });
+        }
+        if (this.sensorsMap) {
+            setTimeout(() => this.sensorsMap.invalidateSize(), 100);
+        }
+    }
+    
+    initializeCharts() {
+        this.charts.initialized = true;
+        
+        // Threats by Type Chart
+        const typeCtx = document.getElementById('threatsTypeChart');
+        if (typeCtx) {
+            this.charts.typeChart = new Chart(typeCtx, {
+                type: 'bar',
+                data: {
+                    labels: Object.keys(this.analyticsData.threatsByType),
+                    datasets: [{
+                        label: 'Threats',
+                        data: Object.values(this.analyticsData.threatsByType),
+                        backgroundColor: ['#1FB8CD', '#FFC185', '#B4413C', '#ECEBD5', '#5D878F']
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: { display: false }
+                    },
+                    scales: {
+                        y: { beginAtZero: true, grid: { color: '#2C2F36' }, ticks: { color: '#A0A6B1' } },
+                        x: { grid: { color: '#2C2F36' }, ticks: { color: '#A0A6B1' } }
+                    }
+                }
+            });
+        }
+        
+        // Threats Over Time Chart
+        const timeCtx = document.getElementById('threatsTimeChart');
+        if (timeCtx) {
+            const timeLabels = [];
+            const timeData = [];
+            for (let i = 23; i >= 0; i--) {
+                const hour = new Date(Date.now() - i * 60 * 60 * 1000).getHours();
+                timeLabels.push(`${hour}:00`);
+                timeData.push(Math.floor(Math.random() * 20) + 5);
+            }
+            
+            this.charts.timeChart = new Chart(timeCtx, {
+                type: 'line',
+                data: {
+                    labels: timeLabels,
+                    datasets: [{
+                        label: 'Threats',
+                        data: timeData,
+                        borderColor: '#1FB8CD',
+                        backgroundColor: 'rgba(31, 184, 205, 0.1)',
+                        fill: true
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: { display: false }
+                    },
+                    scales: {
+                        y: { beginAtZero: true, grid: { color: '#2C2F36' }, ticks: { color: '#A0A6B1' } },
+                        x: { grid: { color: '#2C2F36' }, ticks: { color: '#A0A6B1' } }
+                    }
+                }
+            });
+        }
+        
+        // Severity Distribution Chart
+        const severityCtx = document.getElementById('severityChart');
+        if (severityCtx) {
+            this.charts.severityChart = new Chart(severityCtx, {
+                type: 'doughnut',
+                data: {
+                    labels: ['Benign', 'Suspicious', 'Critical'],
+                    datasets: [{
+                        data: Object.values(this.analyticsData.severityDistribution),
+                        backgroundColor: ['#00FF94', '#FFC14D', '#FF4D4D']
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: {
+                            position: 'bottom',
+                            labels: { color: '#A0A6B1' }
+                        }
+                    }
+                }
+            });
+        }
+    }
+    
+    updateKPICards() {
+        const kpiTotalThreats = document.getElementById('kpiTotalThreats');
+        const kpiCriticalPercent = document.getElementById('kpiCriticalPercent');
+        const kpiResponseTime = document.getElementById('kpiResponseTime');
+        const kpiActiveSensors = document.getElementById('kpiActiveSensors');
+        
+        if (kpiTotalThreats) kpiTotalThreats.textContent = this.analyticsData.kpis.totalThreats;
+        if (kpiCriticalPercent) kpiCriticalPercent.textContent = this.analyticsData.kpis.criticalPercentage + '%';
+        if (kpiResponseTime) kpiResponseTime.textContent = this.analyticsData.kpis.averageResponseTime + 's';
+        if (kpiActiveSensors) kpiActiveSensors.textContent = this.analyticsData.kpis.activeSensors;
+    }
+    
+    renderThreatsTable() {
+        const tableBody = document.getElementById('threatsTableBody');
+        const threatCount = document.getElementById('threatCount');
+        
+        if (!tableBody) return;
+        
+        let filteredThreats = this.threats;
+        if (this.currentFilter !== 'all') {
+            filteredThreats = this.threats.filter(t => t.severity === this.currentFilter);
+        }
+        
+        // Sort threats
+        filteredThreats.sort((a, b) => {
+            let aVal = a[this.sortColumn];
+            let bVal = b[this.sortColumn];
+            
+            if (this.sortColumn === 'timestamp') {
+                aVal = new Date(aVal);
+                bVal = new Date(bVal);
+            }
+            
+            if (this.sortDirection === 'asc') {
+                return aVal > bVal ? 1 : -1;
+            } else {
+                return aVal < bVal ? 1 : -1;
+            }
+        });
+        
+        tableBody.innerHTML = '';
+        if (threatCount) threatCount.textContent = filteredThreats.length;
+        
+        filteredThreats.forEach(threat => {
+            const row = document.createElement('tr');
+            row.innerHTML = `
+                <td>${new Date(threat.timestamp).toLocaleString()}</td>
+                <td>${threat.sensor}</td>
+                <td>${threat.type}</td>
+                <td><span class="event-severity ${threat.severity}">${threat.severity}</span></td>
+                <td>${Math.round(threat.confidence * 100)}%</td>
+                <td><span class="threat-status ${threat.status}">${threat.status}</span></td>
+                <td>
+                    <button class="btn-event approve" data-threat-id="${threat.id}">✓</button>
+                    <button class="btn-event reject" data-threat-id="${threat.id}">✕</button>
+                </td>
+            `;
+            
+            row.addEventListener('click', () => this.openThreatModal(threat));
+            
+            // Add action handlers to table buttons
+            row.querySelectorAll('.btn-event').forEach(btn => {
+                btn.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    const action = btn.classList.contains('approve') ? 'approve' : 'reject';
+                    const threatId = parseInt(btn.dataset.threatId);
+                    this.handleQuickAction(threatId, action);
+                });
+            });
+            
+            tableBody.appendChild(row);
+        });
+    }
+    
+    renderSensorsGrid() {
+        const sensorsGrid = document.getElementById('sensorsGrid');
+        if (!sensorsGrid) return;
+        
+        sensorsGrid.innerHTML = '';
+        
+        this.sensors.forEach(sensor => {
+            const card = document.createElement('div');
+            card.className = 'sensor-card';
+            card.innerHTML = `
+                <div class="sensor-card-header">
+                    <div class="sensor-id">${sensor.name}</div>
+                    <div class="sensor-type">${sensor.type}</div>
+                </div>
+                <div class="sensor-card-body">
+                    <div class="sensor-metric">
+                        <div class="sensor-metric-label">Battery</div>
+                        <div class="sensor-metric-value">${sensor.batteryLevel}%</div>
+                        <div class="battery-indicator">
+                            <div class="battery-fill ${this.getBatteryClass(sensor.batteryLevel)}" 
+                                 style="width: ${sensor.batteryLevel}%"></div>
+                        </div>
+                    </div>
+                    <div class="sensor-metric">
+                        <div class="sensor-metric-label">Signal</div>
+                        <div class="sensor-metric-value">${sensor.signalStrength}%</div>
+                    </div>
+                    <div class="sensor-metric">
+                        <div class="sensor-metric-label">Status</div>
+                        <div class="sensor-metric-value">
+                            <span class="sensor-status ${sensor.status}"></span>
+                            ${sensor.status.toUpperCase()}
+                        </div>
+                    </div>
+                    <div class="sensor-metric">
+                        <div class="sensor-metric-label">Last Ping</div>
+                        <div class="sensor-metric-value">${this.formatLastPing(sensor.lastPing)}</div>
+                    </div>
+                </div>
+            `;
+            
+            sensorsGrid.appendChild(card);
+        });
+    }
+    
+    renderReportsSummary() {
+        const reportSummary = document.getElementById('reportSummary');
+        if (!reportSummary) return;
+        
+        const summaryData = [
+            { label: 'Total Events', value: this.threats.length },
+            { label: 'Critical Threats', value: this.threats.filter(t => t.severity === 'critical').length },
+            { label: 'Resolved Events', value: this.threats.filter(t => t.status !== 'pending').length },
+            { label: 'Active Sensors', value: this.sensors.filter(s => s.status === 'active').length },
+            { label: 'System Uptime', value: '99.97%' },
+            { label: 'Average Response Time', value: '4.2s' }
+        ];
+        
+        reportSummary.innerHTML = summaryData.map(item => `
+            <div class="summary-item">
+                <div class="summary-label">${item.label}</div>
+                <div class="summary-value">${item.value}</div>
+            </div>
+        `).join('');
+    }
+    
+    getBatteryClass(level) {
+        if (level > 60) return 'high';
+        if (level > 30) return 'medium';
+        return 'low';
+    }
+    
+    formatLastPing(timestamp) {
+        const now = Date.now();
+        const diff = now - timestamp;
+        const minutes = Math.floor(diff / 60000);
+        return minutes < 1 ? 'Now' : `${minutes}m ago`;
+    }
+    
+    handleThreatFilter(filter) {
+        this.currentFilter = filter;
+        
+        // Update filter button states for threats page
+        document.querySelectorAll('#threats-page .btn-filter').forEach(btn => {
+            btn.classList.remove('active');
+        });
+        document.querySelector(`#threats-page [data-filter="${filter}"]`).classList.add('active');
+        
+        this.renderThreatsTable();
+    }
+    
+    handleSensorFilter(filter) {
+        // Update filter button states for sensors page
+        document.querySelectorAll('#sensors-page .btn-filter').forEach(btn => {
+            btn.classList.remove('active');
+        });
+        document.querySelector(`#sensors-page [data-filter="${filter}"]`).classList.add('active');
+        
+        // Filter sensors and re-render
+        this.renderSensorsGrid();
+    }
+    
+    handleThreatSearch(query) {
+        // Implementation for threat search
+        this.renderThreatsTable();
+    }
+    
+    handleTableSort(column) {
+        if (this.sortColumn === column) {
+            this.sortDirection = this.sortDirection === 'asc' ? 'desc' : 'asc';
+        } else {
+            this.sortColumn = column;
+            this.sortDirection = 'desc';
+        }
+        this.renderThreatsTable();
+    }
+    
+    handleTimeRangeChange(range) {
+        console.log('Time range changed:', range);
+        // Update charts based on time range
+    }
+    
+    exportAnalyticsData() {
+        const data = {
+            timestamp: new Date().toISOString(),
+            kpis: this.analyticsData.kpis,
+            threatsByType: this.analyticsData.threatsByType,
+            severityDistribution: this.analyticsData.severityDistribution
+        };
+        this.downloadJSON(data, 'analytics-export.json');
+    }
+    
+    exportData(format) {
+        const data = {
+            threats: this.threats,
+            sensors: this.sensors,
+            exportDate: new Date().toISOString()
+        };
+        
+        if (format === 'csv') {
+            this.downloadCSV(this.threats, 'threat-logs.csv');
+        } else if (format === 'json') {
+            this.downloadJSON(data, 'system-data.json');
+        } else if (format === 'summary') {
+            this.downloadSummaryReport();
+        }
+    }
+    
+    generateReport() {
+        // Generate comprehensive report
+        this.renderReportsSummary();
+    }
+    
+    downloadCSV(data, filename) {
+        const csvContent = this.convertToCSV(data);
+        this.downloadFile(csvContent, filename, 'text/csv');
+    }
+    
+    downloadJSON(data, filename) {
+        const jsonContent = JSON.stringify(data, null, 2);
+        this.downloadFile(jsonContent, filename, 'application/json');
+    }
+    
+    downloadSummaryReport() {
+        const summaryHTML = this.generateSummaryHTML();
+        this.downloadFile(summaryHTML, 'summary-report.html', 'text/html');
+    }
+    
+    convertToCSV(threats) {
+        const headers = ['ID', 'Timestamp', 'Sensor', 'Type', 'Severity', 'Confidence', 'Status'];
+        const rows = threats.map(t => [
+            t.id, 
+            new Date(t.timestamp).toISOString(), 
+            t.sensor, 
+            t.type, 
+            t.severity, 
+            Math.round(t.confidence * 100) + '%', 
+            t.status
+        ]);
+        
+        return [headers, ...rows].map(row => row.join(',')).join('\n');
+    }
+    
+    generateSummaryHTML() {
+        return `
+            <!DOCTYPE html>
+            <html>
+            <head><title>Vigilance Command - Summary Report</title></head>
+            <body>
+                <h1>System Summary Report</h1>
+                <p>Generated: ${new Date().toLocaleString()}</p>
+                <h2>Statistics</h2>
+                <ul>
+                    <li>Total Threats: ${this.threats.length}</li>
+                    <li>Critical Threats: ${this.threats.filter(t => t.severity === 'critical').length}</li>
+                    <li>Active Sensors: ${this.sensors.filter(s => s.status === 'active').length}</li>
+                </ul>
+            </body>
+            </html>
+        `;
+    }
+    
+    downloadFile(content, filename, mimeType) {
+        const blob = new Blob([content], { type: mimeType });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = filename;
+        link.click();
+        URL.revokeObjectURL(url);
+    }
+    
+    openThreatModal(threat) {
+        this.selectedThreat = threat;
+        const modal = document.getElementById('threatModal');
+        const content = document.getElementById('modalContent');
+        
+        if (!modal || !content) return;
+        
+        const timestamp = new Date(threat.timestamp).toLocaleString();
+        const confidencePercent = Math.round(threat.confidence * 100);
+        
+        content.innerHTML = `
+            <div style="display: grid; gap: 16px;">
+                <div>
+                    <h4 style="color: #4A9EFF; margin-bottom: 8px;">Threat Classification</h4>
+                    <div style="display: flex; gap: 16px; align-items: center;">
+                        <span class="event-severity ${threat.severity}">${threat.severity.toUpperCase()}</span>
+                        <span style="color: #A0A6B1;">ID: ${threat.id}</span>
+                    </div>
+                </div>
+                
+                <div>
+                    <h4 style="color: #4A9EFF; margin-bottom: 8px;">Detection Details</h4>
+                    <div style="font-family: 'Monaco', monospace; font-size: 13px; color: #A0A6B1;">
+                        <div>Type: ${threat.type}</div>
+                        <div>Sensor: ${threat.sensor}</div>
+                        <div>Timestamp: ${timestamp}</div>
+                        <div>Confidence: ${confidencePercent}%</div>
+                    </div>
+                </div>
+                
+                <div>
+                    <h4 style="color: #4A9EFF; margin-bottom: 8px;">Location</h4>
+                    <div style="font-family: 'Monaco', monospace; font-size: 13px; color: #A0A6B1;">
+                        <div>Latitude: ${threat.location.lat.toFixed(6)}°</div>
+                        <div>Longitude: ${threat.location.lng.toFixed(6)}°</div>
+                    </div>
+                </div>
+                
+                <div>
+                    <h4 style="color: #4A9EFF; margin-bottom: 8px;">Description</h4>
+                    <p style="color: #A0A6B1; line-height: 1.5;">${threat.details}</p>
+                </div>
+                
+                <div>
+                    <h4 style="color: #4A9EFF; margin-bottom: 8px;">Status</h4>
+                    <span style="text-transform: uppercase; color: #FFC14D; font-weight: 600;">${threat.status}</span>
+                </div>
+            </div>
+        `;
+        
+        modal.classList.add('visible');
+    }
+    
+    closeModal() {
+        const modal = document.getElementById('threatModal');
+        if (modal) {
+            modal.classList.remove('visible');
+        }
+        this.selectedThreat = null;
+    }
+    
+    handleThreatAction(action) {
+        if (!this.selectedThreat) return;
+        
+        this.selectedThreat.status = action;
+        this.updateThreatInFeed(this.selectedThreat);
+        this.closeModal();
+        this.updateAnalytics();
+        this.renderThreatsTable();
+        this.showActionConfirmation(action);
+    }
+    
+    handleQuickAction(threatId, action) {
+        const threat = this.threats.find(t => t.id === threatId);
+        if (threat) {
+            const actionMap = {
+                'approve': 'approved',
+                'reject': 'rejected',
+                'false-alarm': 'false_alarm'
+            };
+            
+            threat.status = actionMap[action] || action;
+            this.updateThreatInFeed(threat);
+            this.updateAnalytics();
+            this.renderThreatsTable();
+            this.showActionConfirmation(threat.status);
+        }
+    }
+    
+    showActionConfirmation(action) {
+        const actionText = action.replace('_', ' ').toUpperCase();
+        
+        const notification = document.createElement('div');
+        notification.style.cssText = `
+            position: fixed;
+            top: 80px;
+            right: 20px;
+            background: #1A1D24;
+            color: #00FF94;
+            padding: 12px 20px;
+            border-radius: 4px;
+            border: 1px solid #00FF94;
+            font-family: 'Inter', sans-serif;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            z-index: 3000;
+            opacity: 0;
+            transform: translateY(-10px);
+            transition: all 0.3s ease;
+        `;
+        notification.textContent = `Threat ${actionText}`;
+        
+        document.body.appendChild(notification);
+        
+        setTimeout(() => {
+            notification.style.opacity = '1';
+            notification.style.transform = 'translateY(0)';
+        }, 100);
+        
+        setTimeout(() => {
+            notification.style.opacity = '0';
+            notification.style.transform = 'translateY(-10px)';
+            setTimeout(() => {
+                if (notification.parentNode) {
+                    document.body.removeChild(notification);
+                }
+            }, 300);
+        }, 3000);
+    }
+    
+    updateThreatInFeed(threat) {
+        const element = document.querySelector(`[data-threat-id="${threat.id}"]`);
+        if (element) {
+            const statusColors = {
+                approved: '#00FF94',
+                rejected: '#FF4D4D',
+                false_alarm: '#FFC14D'
+            };
+            
+            const color = statusColors[threat.status];
+            if (color) {
+                element.style.borderLeftColor = color;
+                element.style.opacity = '0.7';
+            }
+        }
+    }
+    
+    updateAnalytics() {
+        const totalThreats = this.threats.length;
+        const criticalCount = this.threats.filter(t => t.severity === 'critical').length;
+        const suspiciousCount = this.threats.filter(t => t.severity === 'suspicious').length;
+        const benignCount = this.threats.filter(t => t.severity === 'benign').length;
+        const activeSensors = this.sensors.filter(s => s.status === 'active').length;
+        
+        const totalElement = document.getElementById('totalThreats');
+        const sensorsElement = document.getElementById('activeSensors');
+        const criticalElement = document.getElementById('criticalCount');
+        const suspiciousElement = document.getElementById('suspiciousCount');
+        const benignElement = document.getElementById('benignCount');
+        
+        if (totalElement) totalElement.textContent = totalThreats;
+        if (sensorsElement) sensorsElement.textContent = activeSensors;
+        if (criticalElement) criticalElement.textContent = criticalCount;
+        if (suspiciousElement) suspiciousElement.textContent = suspiciousCount;
+        if (benignElement) benignElement.textContent = benignCount;
+        
+        // Update distribution bars
+        const maxCount = Math.max(criticalCount, suspiciousCount, benignCount, 1);
+        const criticalBar = document.querySelector('.bar-critical');
+        const suspiciousBar = document.querySelector('.bar-suspicious');
+        const benignBar = document.querySelector('.bar-benign');
+        
+        if (criticalBar) criticalBar.style.width = `${(criticalCount / maxCount) * 100}%`;
+        if (suspiciousBar) suspiciousBar.style.width = `${(suspiciousCount / maxCount) * 100}%`;
+        if (benignBar) benignBar.style.width = `${(benignCount / maxCount) * 100}%`;
+    }
+    
+    renderSensorStatus() {
+        const sensorList = document.getElementById('sensorList');
+        if (!sensorList) return;
+        
+        sensorList.innerHTML = '';
+        
+        this.sensors.forEach(sensor => {
+            const item = document.createElement('div');
+            item.className = 'sensor-item';
+            item.innerHTML = `
+                <span class="sensor-name">${sensor.name}</span>
+                <div class="sensor-status ${sensor.status}"></div>
+            `;
+            sensorList.appendChild(item);
+        });
+    }
+    
+    toggleThreatGeneration() {
+        this.isGeneratingThreats = !this.isGeneratingThreats;
+        const btn = document.getElementById('pauseFeed');
+        if (btn) {
+            btn.textContent = this.isGeneratingThreats ? '⏸' : '▶';
+        }
+    }
+    
+    clearEventFeed() {
+        if (confirm('Clear all events from feed? This cannot be undone.')) {
+            this.threats = [];
+            const feed = document.getElementById('eventFeed');
+            if (feed) feed.innerHTML = '';
+            
+            this.threatMarkers.forEach(marker => this.map.removeLayer(marker));
+            this.threatMarkers.clear();
+            this.updateAnalytics();
+            this.renderThreatsTable();
+        }
     }
 }
 
-// Add notification styles
-const notificationStyles = `
-    .notification {
-        backdrop-filter: blur(10px);
-    }
-    
-    .notification i {
-        font-size: 16px;
-        min-width: 16px;
-    }
-    
-    .notification span {
-        flex: 1;
-        color: var(--text-primary);
-        font-weight: 500;
-    }
-    
-    .notification-close {
-        background: none;
-        border: none;
-        color: var(--text-secondary);
-        cursor: pointer;
-        padding: 4px;
-        border-radius: var(--radius-sm);
-        transition: all 0.2s ease;
-        font-size: 12px;
-    }
-    
-    .notification-close:hover {
-        background: var(--hover-bg);
-        color: var(--text-primary);
-    }
-`;
-
-const styleSheet = document.createElement('style');
-styleSheet.textContent = notificationStyles;
-document.head.appendChild(styleSheet);
-
 // Initialize the system when DOM is loaded
 document.addEventListener('DOMContentLoaded', () => {
+    console.log('Initializing Vigilance Command System...');
     window.vigilanceCommand = new VigilanceCommand();
 });
 
-// Add global utilities
-window.VigilanceUtils = {
-    formatCoordinates: (lat, lng) => {
-        return `${lat.toFixed(6)}, ${lng.toFixed(6)}`;
-    },
-    
-    getThreatLevelText: (level) => {
-        const levels = {
-            1: 'LOW',
-            2: 'ELEVATED', 
-            3: 'SUSPICIOUS',
-            4: 'HIGH',
-            5: 'CRITICAL'
-        };
-        return levels[level] || 'UNKNOWN';
-    },
-    
-    generateMissionCode: () => {
-        const prefixes = ['ALPHA', 'BRAVO', 'CHARLIE', 'DELTA', 'ECHO'];
-        const numbers = String(Math.floor(Math.random() * 9999)).padStart(4, '0');
-        const prefix = prefixes[Math.floor(Math.random() * prefixes.length)];
-        return `${prefix}-${numbers}`;
+// Handle window resize for maps
+window.addEventListener('resize', () => {
+    if (window.vigilanceCommand) {
+        if (window.vigilanceCommand.map) {
+            setTimeout(() => window.vigilanceCommand.map.invalidateSize(), 100);
+        }
+        if (window.vigilanceCommand.threatsMap) {
+            setTimeout(() => window.vigilanceCommand.threatsMap.invalidateSize(), 100);
+        }
+        if (window.vigilanceCommand.sensorsMap) {
+            setTimeout(() => window.vigilanceCommand.sensorsMap.invalidateSize(), 100);
+        }
     }
-};
-
-console.log('🛡️ Vigilance Command System Ready');
-console.log('🔴 Threat Detection Active');
-console.log('📡 All Systems Operational');
+});

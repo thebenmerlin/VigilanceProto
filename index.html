@@ -1,0 +1,181 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Vigilance Command - Threat Detection System</title>
+    <link rel="stylesheet" href="style.css">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Roboto+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+    <script src='https://api.mapbox.com/mapbox-gl-js/v2.15.0/mapbox-gl.js'></script>
+    <link href='https://api.mapbox.com/mapbox-gl-js/v2.15.0/mapbox-gl.css' rel='stylesheet' />
+</head>
+<body>
+    <div class="app-container">
+        <!-- Top Navigation Bar -->
+        <nav class="navbar">
+            <div class="navbar-left">
+                <div class="logo">
+                    <i class="fas fa-shield-alt"></i>
+                    <span class="logo-text">VIGILANCE COMMAND</span>
+                </div>
+            </div>
+            <div class="navbar-right">
+                <div class="status-indicator">
+                    <div class="status-dot status-online"></div>
+                    <span class="status-text">ONLINE</span>
+                </div>
+                <div class="system-time" id="systemTime"></div>
+            </div>
+        </nav>
+
+        <div class="main-layout">
+            <!-- Sidebar -->
+            <aside class="sidebar">
+                <div class="nav-section">
+                    <div class="nav-item active" data-section="dashboard">
+                        <i class="fas fa-chart-line"></i>
+                        <span>Dashboard</span>
+                    </div>
+                    <div class="nav-item" data-section="map">
+                        <i class="fas fa-map-marked-alt"></i>
+                        <span>Map</span>
+                    </div>
+                    <div class="nav-item" data-section="analytics">
+                        <i class="fas fa-chart-bar"></i>
+                        <span>Analytics</span>
+                    </div>
+                    <div class="nav-item" data-section="logs">
+                        <i class="fas fa-list-alt"></i>
+                        <span>Logs</span>
+                    </div>
+                </div>
+            </aside>
+
+            <!-- Main Content Area -->
+            <main class="main-content">
+                <!-- Dashboard Grid -->
+                <div class="dashboard-grid">
+                    <!-- Event Feed Panel -->
+                    <div class="panel event-feed-panel">
+                        <div class="panel-header">
+                            <h3>THREAT EVENTS</h3>
+                            <div class="panel-controls">
+                                <div class="live-indicator">
+                                    <div class="live-dot"></div>
+                                    <span>LIVE</span>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="panel-content">
+                            <div class="event-feed" id="eventFeed">
+                                <!-- Events will be populated by JavaScript -->
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Map Panel -->
+                    <div class="panel map-panel">
+                        <div class="panel-header">
+                            <h3>TACTICAL MAP</h3>
+                            <div class="panel-controls">
+                                <button class="control-btn" id="mapRefresh">
+                                    <i class="fas fa-sync-alt"></i>
+                                </button>
+                                <button class="control-btn" id="mapExpand">
+                                    <i class="fas fa-expand"></i>
+                                </button>
+                            </div>
+                        </div>
+                        <div class="panel-content">
+                            <div id="map" class="map-container"></div>
+                            <div class="map-legend">
+                                <div class="legend-item">
+                                    <div class="legend-marker critical"></div>
+                                    <span>Critical</span>
+                                </div>
+                                <div class="legend-item">
+                                    <div class="legend-marker warning"></div>
+                                    <span>Suspicious</span>
+                                </div>
+                                <div class="legend-item">
+                                    <div class="legend-marker benign"></div>
+                                    <span>Benign</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Analytics Panel -->
+                    <div class="panel analytics-panel">
+                        <div class="panel-header">
+                            <h3>THREAT ANALYTICS</h3>
+                        </div>
+                        <div class="panel-content">
+                            <div class="analytics-grid">
+                                <div class="metric-card">
+                                    <div class="metric-value" id="benignCount">0</div>
+                                    <div class="metric-label">BENIGN</div>
+                                    <div class="metric-trend benign"></div>
+                                </div>
+                                <div class="metric-card">
+                                    <div class="metric-value" id="suspiciousCount">0</div>
+                                    <div class="metric-label">SUSPICIOUS</div>
+                                    <div class="metric-trend warning"></div>
+                                </div>
+                                <div class="metric-card">
+                                    <div class="metric-value" id="criticalCount">0</div>
+                                    <div class="metric-label">CRITICAL</div>
+                                    <div class="metric-trend critical"></div>
+                                </div>
+                            </div>
+                            
+                            <div class="sensor-status">
+                                <h4>SENSOR STATUS</h4>
+                                <div class="sensor-list" id="sensorList">
+                                    <!-- Sensors populated by JavaScript -->
+                                </div>
+                            </div>
+
+                            <div class="threat-distribution">
+                                <h4>THREAT DISTRIBUTION</h4>
+                                <div class="distribution-chart">
+                                    <div class="chart-bar">
+                                        <div class="bar-fill benign" id="benignBar" style="width: 0%"></div>
+                                        <span class="bar-label">Benign</span>
+                                    </div>
+                                    <div class="chart-bar">
+                                        <div class="bar-fill warning" id="suspiciousBar" style="width: 0%"></div>
+                                        <span class="bar-label">Suspicious</span>
+                                    </div>
+                                    <div class="chart-bar">
+                                        <div class="bar-fill critical" id="criticalBar" style="width: 0%"></div>
+                                        <span class="bar-label">Critical</span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </main>
+        </div>
+    </div>
+
+    <!-- Modal for Event Details -->
+    <div id="eventModal" class="modal hidden">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>THREAT EVENT DETAILS</h3>
+                <button class="modal-close" id="modalClose">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+            <div class="modal-body" id="modalBody">
+                <!-- Event details populated by JavaScript -->
+            </div>
+        </div>
+    </div>
+
+    <script src="app.js"></script>
+</body>
+</html>

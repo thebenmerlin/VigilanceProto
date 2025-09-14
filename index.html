@@ -1,0 +1,461 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Vigilance Command - Threat Detection System</title>
+    <link rel="stylesheet" href="style.css">
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Roboto+Condensed:wght@300;400;500;600;700&family=Monaco:wght@400&display=swap" rel="stylesheet">
+</head>
+<body>
+    <!-- Top Navigation -->
+    <nav class="top-nav">
+        <div class="nav-left">
+            <div class="logo">
+                <div class="logo-icon">⚡</div>
+                <span class="logo-text">VIGILANCE COMMAND</span>
+            </div>
+        </div>
+        <div class="nav-center">
+            <div class="system-status">
+                <span class="status-indicator online">
+                    <span class="pulse-dot"></span>
+                    SYSTEM ONLINE
+                </span>
+            </div>
+        </div>
+        <div class="nav-right">
+            <div class="system-time" id="systemTime"></div>
+            <div class="connection-status">
+                <span class="connection-indicator">🔗 SECURE</span>
+            </div>
+        </div>
+    </nav>
+
+    <!-- Main Container -->
+    <div class="main-container">
+        <!-- Left Sidebar -->
+        <aside class="sidebar">
+            <nav class="sidebar-nav">
+                <ul class="nav-items">
+                    <li class="nav-item active">
+                        <a href="#" class="nav-link" data-panel="overview">
+                            <span class="nav-icon">📊</span>
+                            <span class="nav-text">Overview</span>
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a href="#" class="nav-link" data-panel="threats">
+                            <span class="nav-icon">⚠️</span>
+                            <span class="nav-text">Threats</span>
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a href="#" class="nav-link" data-panel="analytics">
+                            <span class="nav-icon">📈</span>
+                            <span class="nav-text">Analytics</span>
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a href="#" class="nav-link" data-panel="sensors">
+                            <span class="nav-icon">📡</span>
+                            <span class="nav-text">Sensors</span>
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a href="#" class="nav-link" data-panel="reports">
+                            <span class="nav-icon">📋</span>
+                            <span class="nav-text">Reports</span>
+                        </a>
+                    </li>
+                </ul>
+            </nav>
+        </aside>
+
+        <!-- Main Content Area -->
+        <main class="content-area">
+            <!-- Overview/Dashboard Page -->
+            <div id="overview-page" class="page-content active">
+                <div class="dashboard">
+                    <!-- Left Panel - Event Feed -->
+                    <section class="panel event-feed-panel">
+                        <div class="panel-header">
+                            <h3 class="panel-title">
+                                <span class="live-indicator">
+                                    <span class="live-dot"></span>
+                                    LIVE
+                                </span>
+                                Threat Feed
+                            </h3>
+                            <div class="panel-controls">
+                                <button class="btn-control" id="pauseFeed">⏸</button>
+                                <button class="btn-control" id="clearFeed">🗑</button>
+                            </div>
+                        </div>
+                        <div class="panel-content">
+                            <div class="event-feed" id="eventFeed">
+                                <!-- Events will be populated by JavaScript -->
+                            </div>
+                        </div>
+                    </section>
+
+                    <!-- Right Panels Container -->
+                    <div class="right-panels">
+                        <!-- Map Panel -->
+                        <section class="panel map-panel">
+                            <div class="panel-header">
+                                <h3 class="panel-title">Tactical Overview</h3>
+                                <div class="map-controls">
+                                    <button class="btn-control active" id="showThreats">Threats</button>
+                                    <button class="btn-control" id="showSensors">Sensors</button>
+                                </div>
+                            </div>
+                            <div class="panel-content">
+                                <div id="map" class="map-container"></div>
+                            </div>
+                        </section>
+
+                        <!-- Analytics Panel -->
+                        <section class="panel analytics-panel">
+                            <div class="panel-header">
+                                <h3 class="panel-title">System Analytics</h3>
+                            </div>
+                            <div class="panel-content">
+                                <div class="metrics-grid">
+                                    <div class="metric-card">
+                                        <div class="metric-value" id="totalThreats">0</div>
+                                        <div class="metric-label">Total Threats</div>
+                                    </div>
+                                    <div class="metric-card">
+                                        <div class="metric-value" id="activeSensors">6</div>
+                                        <div class="metric-label">Active Sensors</div>
+                                    </div>
+                                    <div class="metric-card">
+                                        <div class="metric-value" id="systemUptime">99.7%</div>
+                                        <div class="metric-label">System Uptime</div>
+                                    </div>
+                                    <div class="metric-card">
+                                        <div class="metric-value" id="responseTime">1.2s</div>
+                                        <div class="metric-label">Avg Response</div>
+                                    </div>
+                                </div>
+                                
+                                <div class="threat-distribution">
+                                    <h4 class="section-title">Threat Distribution</h4>
+                                    <div class="distribution-bars">
+                                        <div class="bar-item">
+                                            <div class="bar-label">Critical</div>
+                                            <div class="bar-container">
+                                                <div class="bar bar-critical" style="width: 25%"></div>
+                                                <span class="bar-value" id="criticalCount">0</span>
+                                            </div>
+                                        </div>
+                                        <div class="bar-item">
+                                            <div class="bar-label">Suspicious</div>
+                                            <div class="bar-container">
+                                                <div class="bar bar-suspicious" style="width: 45%"></div>
+                                                <span class="bar-value" id="suspiciousCount">0</span>
+                                            </div>
+                                        </div>
+                                        <div class="bar-item">
+                                            <div class="bar-label">Benign</div>
+                                            <div class="bar-container">
+                                                <div class="bar bar-benign" style="width: 60%"></div>
+                                                <span class="bar-value" id="benignCount">0</span>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div class="sensor-status">
+                                    <h4 class="section-title">Sensor Status</h4>
+                                    <div class="sensor-list" id="sensorList">
+                                        <!-- Sensors will be populated by JavaScript -->
+                                    </div>
+                                </div>
+                            </div>
+                        </section>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Threats Page -->
+            <div id="threats-page" class="page-content">
+                <div class="page-header">
+                    <h2 class="page-title">Threat Management</h2>
+                    <div class="page-controls">
+                        <div class="filter-controls">
+                            <button class="btn-filter active" data-filter="all">All</button>
+                            <button class="btn-filter" data-filter="benign">Benign</button>
+                            <button class="btn-filter" data-filter="suspicious">Suspicious</button>
+                            <button class="btn-filter" data-filter="critical">Critical</button>
+                        </div>
+                        <input type="search" class="search-input" placeholder="Search threats..." id="threatSearch">
+                    </div>
+                </div>
+
+                <div class="threats-layout">
+                    <div class="threats-table-panel">
+                        <div class="panel">
+                            <div class="panel-header">
+                                <h3 class="panel-title">Active Threats</h3>
+                                <div class="panel-controls">
+                                    <span id="threatCount" class="count-badge">0</span>
+                                </div>
+                            </div>
+                            <div class="panel-content">
+                                <div class="table-container">
+                                    <table class="threats-table" id="threatsTable">
+                                        <thead>
+                                            <tr>
+                                                <th class="sortable" data-sort="timestamp">Timestamp</th>
+                                                <th class="sortable" data-sort="sensor">Sensor</th>
+                                                <th class="sortable" data-sort="type">Type</th>
+                                                <th class="sortable" data-sort="severity">Severity</th>
+                                                <th class="sortable" data-sort="confidence">Confidence</th>
+                                                <th class="sortable" data-sort="status">Status</th>
+                                                <th>Actions</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody id="threatsTableBody">
+                                            <!-- Rows will be populated by JavaScript -->
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="threats-map-panel">
+                        <div class="panel">
+                            <div class="panel-header">
+                                <h3 class="panel-title">Threat Locations</h3>
+                            </div>
+                            <div class="panel-content">
+                                <div id="threatsMap" class="map-container"></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Analytics Page -->
+            <div id="analytics-page" class="page-content">
+                <div class="page-header">
+                    <h2 class="page-title">System Analytics</h2>
+                    <div class="page-controls">
+                        <select class="time-range-selector" id="timeRange">
+                            <option value="24h">Last 24 Hours</option>
+                            <option value="7d">Last 7 Days</option>
+                            <option value="30d" selected>Last 30 Days</option>
+                        </select>
+                        <button class="btn-control" id="exportAnalytics">Export</button>
+                    </div>
+                </div>
+
+                <div class="analytics-layout">
+                    <div class="kpi-cards">
+                        <div class="kpi-card">
+                            <div class="kpi-value" id="kpiTotalThreats">127</div>
+                            <div class="kpi-label">Total Threats Today</div>
+                        </div>
+                        <div class="kpi-card">
+                            <div class="kpi-value" id="kpiCriticalPercent">18%</div>
+                            <div class="kpi-label">Critical Threats</div>
+                        </div>
+                        <div class="kpi-card">
+                            <div class="kpi-value" id="kpiResponseTime">4.2s</div>
+                            <div class="kpi-label">Avg Response Time</div>
+                        </div>
+                        <div class="kpi-card">
+                            <div class="kpi-value" id="kpiActiveSensors">24</div>
+                            <div class="kpi-label">Active Sensors</div>
+                        </div>
+                    </div>
+
+                    <div class="charts-grid">
+                        <div class="chart-panel">
+                            <div class="panel">
+                                <div class="panel-header">
+                                    <h3 class="panel-title">Threats by Type</h3>
+                                </div>
+                                <div class="panel-content">
+                                    <div class="chart-container" style="position: relative; height: 300px;">
+                                        <canvas id="threatsTypeChart"></canvas>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="chart-panel">
+                            <div class="panel">
+                                <div class="panel-header">
+                                    <h3 class="panel-title">Threats Over Time</h3>
+                                </div>
+                                <div class="panel-content">
+                                    <div class="chart-container" style="position: relative; height: 300px;">
+                                        <canvas id="threatsTimeChart"></canvas>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="chart-panel">
+                            <div class="panel">
+                                <div class="panel-header">
+                                    <h3 class="panel-title">Severity Distribution</h3>
+                                </div>
+                                <div class="panel-content">
+                                    <div class="chart-container" style="position: relative; height: 300px;">
+                                        <canvas id="severityChart"></canvas>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="chart-panel">
+                            <div class="panel">
+                                <div class="panel-header">
+                                    <h3 class="panel-title">System Performance</h3>
+                                </div>
+                                <div class="panel-content">
+                                    <div class="performance-metrics">
+                                        <div class="performance-item">
+                                            <div class="performance-label">System Uptime</div>
+                                            <div class="performance-value">99.97%</div>
+                                        </div>
+                                        <div class="performance-item">
+                                            <div class="performance-label">Detection Accuracy</div>
+                                            <div class="performance-value">94.8%</div>
+                                        </div>
+                                        <div class="performance-item">
+                                            <div class="performance-label">False Positive Rate</div>
+                                            <div class="performance-value">2.1%</div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Sensors Page -->
+            <div id="sensors-page" class="page-content">
+                <div class="page-header">
+                    <h2 class="page-title">Sensor Network</h2>
+                    <div class="page-controls">
+                        <div class="sensor-filter">
+                            <button class="btn-filter active" data-filter="all">All</button>
+                            <button class="btn-filter" data-filter="active">Active</button>
+                            <button class="btn-filter" data-filter="warning">Warning</button>
+                            <button class="btn-filter" data-filter="critical">Critical</button>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="sensors-layout">
+                    <div class="sensors-grid" id="sensorsGrid">
+                        <!-- Sensor cards will be populated by JavaScript -->
+                    </div>
+
+                    <div class="sensors-map-panel">
+                        <div class="panel">
+                            <div class="panel-header">
+                                <h3 class="panel-title">Sensor Positions</h3>
+                            </div>
+                            <div class="panel-content">
+                                <div id="sensorsMap" class="map-container"></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Reports Page -->
+            <div id="reports-page" class="page-content">
+                <div class="page-header">
+                    <h2 class="page-title">System Reports</h2>
+                    <div class="page-controls">
+                        <input type="date" class="date-input" id="reportDateFrom">
+                        <input type="date" class="date-input" id="reportDateTo">
+                        <button class="btn-control" id="generateReport">Generate</button>
+                    </div>
+                </div>
+
+                <div class="reports-layout">
+                    <div class="export-panel">
+                        <div class="panel">
+                            <div class="panel-header">
+                                <h3 class="panel-title">Export Options</h3>
+                            </div>
+                            <div class="panel-content">
+                                <div class="export-options">
+                                    <button class="export-btn" id="exportCSV">
+                                        <span class="export-icon">📄</span>
+                                        <div>
+                                            <div class="export-title">Event Logs CSV</div>
+                                            <div class="export-desc">Complete threat log data</div>
+                                        </div>
+                                    </button>
+                                    <button class="export-btn" id="exportJSON">
+                                        <span class="export-icon">🗃</span>
+                                        <div>
+                                            <div class="export-title">Raw Data JSON</div>
+                                            <div class="export-desc">Machine-readable format</div>
+                                        </div>
+                                    </button>
+                                    <button class="export-btn" id="exportSummary">
+                                        <span class="export-icon">📊</span>
+                                        <div>
+                                            <div class="export-title">Summary Report</div>
+                                            <div class="export-desc">Executive overview</div>
+                                        </div>
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="reports-summary">
+                        <div class="panel">
+                            <div class="panel-header">
+                                <h3 class="panel-title">Report Summary</h3>
+                            </div>
+                            <div class="panel-content">
+                                <div class="summary-grid" id="reportSummary">
+                                    <!-- Summary will be populated by JavaScript -->
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <!-- Threat Detail Modal -->
+    <div class="modal-overlay" id="threatModal">
+        <div class="modal">
+            <div class="modal-header">
+                <h3 class="modal-title">Threat Details</h3>
+                <button class="modal-close" id="closeModal">×</button>
+            </div>
+            <div class="modal-content" id="modalContent">
+                <!-- Content will be populated by JavaScript -->
+            </div>
+            <div class="modal-actions">
+                <button class="btn btn-approve" id="approveBtn">Approve</button>
+                <button class="btn btn-reject" id="rejectBtn">Reject</button>
+                <button class="btn btn-false-alarm" id="falseAlarmBtn">False Alarm</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Scripts -->
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="app.js"></script>
+</body>
+</html>

@@ -5,7 +5,9 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Vigilance Command - Threat Detection System</title>
     <link rel="stylesheet" href="style.css">
+    <!-- Leaflet CSS -->
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <!-- Google Fonts: Inter, Roboto Condensed, Monaco -->
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Roboto+Condensed:wght@300;400;500;600;700&family=Monaco:wght@400&display=swap" rel="stylesheet">
 </head>
 <body>
@@ -26,6 +28,7 @@
             </div>
         </div>
         <div class="nav-right">
+            <!-- System clock (IST) -->
             <div class="system-time" id="systemTime"></div>
             <div class="connection-status">
                 <span class="connection-indicator">🔗 SECURE</span>
@@ -340,7 +343,7 @@
                     </div>
                 </div>
             </div>
-
+            
             <!-- Sensors Page -->
             <div id="sensors-page" class="page-content">
                 <div class="page-header">
@@ -454,8 +457,11 @@
     </div>
 
     <!-- Scripts -->
+    <!-- Leaflet JS -->
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <!-- Chart.js -->
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <!-- Application JS -->
     <script src="app.js"></script>
 </body>
 </html>
